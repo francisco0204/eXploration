@@ -7,7 +7,7 @@ from typing import Dict, List, Any, Optional
 DEFAULT_TIMEOUT = 7
 DEFAULT_WORKERS = 10
 
-# Algunos payloads básicos típicos de WAF rules
+# Payloads básicos
 PAYLOADS = [
     # SQLi
     "' OR '1'='1",
@@ -24,7 +24,7 @@ PAYLOADS = [
     "|| ping -c 1 127.0.0.1 ||",
 ]
 
-# Frases típicas de páginas de bloqueo de WAF
+# Frases típicas en páginas de bloqueo
 BLOCK_STRINGS = [
     "access denied",
     "request blocked",
@@ -39,7 +39,7 @@ BLOCK_STRINGS = [
     "mod_security",
 ]
 
-# Signaturas simples para intentar identificar vendor
+# Signatures simples 
 WAF_SIGNATURES = {
     "Cloudflare": [
         "cloudflare",
@@ -96,7 +96,7 @@ def _safe_request(
             headers=headers,
             timeout=timeout,
             allow_redirects=True,
-            verify=False,  # opcional: aceptamos certificados raros
+            verify=False,  
         )
         return resp
     except requests.RequestException:
@@ -139,11 +139,11 @@ def _looks_like_block_page(info: Dict[str, Any]) -> bool:
     status = info["status_code"]
     body_sample = info["body_sample"]
 
-    # Códigos típicos de bloqueo
+    
     if status in (403, 406, 429):
         return True
 
-    # Texto típico de bloqueo en el body
+    
     for word in BLOCK_STRINGS:
         if word in body_sample:
             return True
@@ -167,7 +167,7 @@ def detect_waf_for_url(
     - payload_results (lista de resultados por payload)
     """
 
-    # Aseguramos que la URL al menos tenga esquema
+    
     if not url.startswith("http://") and not url.startswith("https://"):
         url = "https://" + url
 
@@ -235,9 +235,9 @@ def detect_waf_for_url(
         if pr["status_code"] != baseline_status:
             different_status_count += 1
 
-        # También podemos considerar diferencias grandes en tamaño de body
+        
         if abs(pr["body_length"] - baseline_len) > (baseline_len * 0.5 + 2000):
-            # Esto podría indicar un template de bloqueo distinto
+            
             pr["blocked_like"] = True
             blocked_count += 1
 
@@ -248,7 +248,7 @@ def detect_waf_for_url(
             f"y {different_status_count} códigos distintos al baseline."
         )
 
-        # Intentar determinar vendor
+        
         vendor = _guess_waf_vendor(
             baseline_info["headers"], baseline_info["body_sample"]
         )
@@ -283,7 +283,7 @@ def detect_waf_for_multiple_urls(
                 res = future.result()
                 results.append(res)
             except Exception:
-                # Nunca dejamos que un error mate todo el scan
+                
                 url = future_to_url[future]
                 results.append(
                     {

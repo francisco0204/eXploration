@@ -11,7 +11,7 @@ from modules.tech_and_security import analyze_tech_and_security
 from modules.advanced_recon import analyze_cors, scan_sensitive_paths, find_js_endpoints, get_cert_names
 from modules.waf_detector import detect_waf_and_cdn
 
-# NUEVO MÓDULO AGREGADO
+
 from modules.waf_payload_detection import detect_waf_for_url
 
 from concurrent.futures import ThreadPoolExecutor
@@ -68,7 +68,7 @@ def main():
     print(f" - {len(subs_bruteforce)} encontrados")
 
     # ============================
-    # UNIÓN TOTAL
+    # UNIÓN 
     # ============================
     all_subdomains = set().union(
         subs_bufferover,
@@ -225,7 +225,7 @@ def main():
             print("\n[13] SSL: SKIPPED")
 
         # ============================
-        # 14 - WAF / CDN DETECTION (básico)
+        # 14 - WAF / CDN DETECTION 
         # ============================
         if deep_scan:
             print("\n[14] WAF / CDN Detection:\n")
@@ -245,7 +245,7 @@ def main():
             print("\n[14] WAF/CDN: SKIPPED (FAST)")
 
         # ============================
-        # 15 - Payload-Based WAF Detection (avanzado)
+        # 15 - Payload-Based WAF Detection 
         # ============================
         if deep_scan:
             print("\n[15] Payload-Based WAF Detection:\n")

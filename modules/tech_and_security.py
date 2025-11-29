@@ -1,7 +1,7 @@
 import requests
 import urllib3
 
-# Desactivar warnings de certificados (como en api_detector)
+# Desactivar warnings de certificados 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Endpoints típicos de paneles admin / login
@@ -108,7 +108,7 @@ def check_admin_endpoints(base_url: str) -> dict:
         url = base_url + endpoint
         try:
             r = requests.get(url, timeout=4, verify=False, allow_redirects=True)
-            # Solo nos interesan los que claramente existen o redirigen
+            
             if r.status_code in [200, 301, 302, 401, 403]:
                 found[endpoint] = r.status_code
         except Exception:
@@ -130,7 +130,7 @@ def analyze_tech_and_security(subdomain: str, use_https: bool = True) -> dict:
 
     try:
         resp = requests.get(base_url, timeout=5, verify=False, allow_redirects=True)
-        html = resp.text[:50000]  # limitamos por si es gigante
+        html = resp.text[:50000] 
         headers = {k: v for k, v in resp.headers.items()}
     except Exception:
         html = ""

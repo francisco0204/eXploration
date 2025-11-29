@@ -15,11 +15,11 @@ def bruteforce_subdomains(domain: str, wordlist_path: str) -> set:
             subdomain = f"{word}.{domain}"
 
             try:
-                # Si resuelve DNS → existe
+                
                 socket.gethostbyname(subdomain)
                 valid_subdomains.add(subdomain)
             except socket.gaierror:
-                pass  # No existe, seguimos
+                pass  
 
     except Exception as e:
         print(f"[ERROR] Bruteforce error: {e}")

@@ -7,7 +7,7 @@ def get_subdomains_from_crtsh(domain: str, retries: int = 3) -> set:
 
     for attempt in range(retries):
         try:
-            response = requests.get(url, timeout=20)  # timeout más largo
+            response = requests.get(url, timeout=20) 
             response.raise_for_status()
             data = response.json()
 
@@ -22,11 +22,11 @@ def get_subdomains_from_crtsh(domain: str, retries: int = 3) -> set:
                     if sub.endswith(domain):
                         subdomains.add(sub)
 
-            return subdomains  # si llegó acá, funcionó
+            return subdomains  
 
         except Exception as e:
             print(f"[WARN] crt.sh intento {attempt+1}/{retries} falló: {e}")
-            time.sleep(2)  # pequeña espera antes de reintentar
+            time.sleep(2)  
 
     print("[ERROR] crt.sh no respondió luego de varios intentos.")
     return subdomains

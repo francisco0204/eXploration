@@ -57,7 +57,7 @@ def analyze_cors(headers: dict) -> dict:
 
     risky = False
     if origin == "*" and credentials and credentials.lower() == "true":
-        # Combinación peligrosa
+        
         risky = True
 
     return {
@@ -92,7 +92,7 @@ def _extract_script_urls(html: str, base_url: str) -> list:
     Devuelve URLs absolutas.
     """
     urls = set()
-    # Busca src="algo.js" o src='algo.js'
+    # Busca src en tags <script>
     for match in re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html, flags=re.IGNORECASE):
         src = match.strip()
         if src.startswith("http://") or src.startswith("https://"):
@@ -123,7 +123,7 @@ def find_js_endpoints(base_url: str) -> set:
             if r.status_code != 200:
                 continue
             text = r.text
-            # Limitar tamaño para evitar memoria excesiva
+            
             if len(text) > 200_000:
                 text = text[:200_000]
 

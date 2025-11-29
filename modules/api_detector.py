@@ -46,6 +46,6 @@ def detect_api_endpoints(subdomain: str, https=True):
             r = requests.get(url, timeout=4, verify=False)
             results[endpoint] = r.status_code
         except:
-            results[endpoint] = None  # No respuesta / error
+            results[endpoint] = None  
 
     return results

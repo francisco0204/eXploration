@@ -11,7 +11,7 @@ def get_subdomains_from_bufferover(domain: str) -> set:
         results = data.get("FDNS_A", []) + data.get("RDNS", [])
 
         for item in results:
-            # formato: "1.2.3.4,sub.domain.com"
+           
             parts = item.split(",")
             if len(parts) == 2:
                 sub = parts[1].strip().lower()

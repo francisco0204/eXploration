@@ -44,7 +44,7 @@ def scan_ports(ip, ports=[21, 22, 25, 80, 443, 8080]):
     return open_ports
 
 
-# 🔥🔥 NUEVO: BANNER GRABBING COMPLETO PARA UNA IP
+# BANNER GRABBING COMPLETO PARA UNA IP
 def process_ip(target):
     """
     Recibe {"subdomain": "...", "ip": "..."} y devuelve
