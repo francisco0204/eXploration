@@ -10,9 +10,8 @@ from modules.api_detector import detect_api_endpoints
 from modules.tech_and_security import analyze_tech_and_security
 from modules.advanced_recon import analyze_cors, scan_sensitive_paths, find_js_endpoints, get_cert_names
 from modules.waf_detector import detect_waf_and_cdn
-
-
 from modules.waf_payload_detection import detect_waf_for_url
+from modules.cdn_bypass import detect_real_ip   # <-- IMPORT NUEVO
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -68,7 +67,7 @@ def main():
     print(f" - {len(subs_bruteforce)} encontrados")
 
     # ============================
-    # UNIÓN 
+    # UNIÓN
     # ============================
     all_subdomains = set().union(
         subs_bufferover,
@@ -94,10 +93,9 @@ def main():
     # 7 - Banner grabbing (paralelo)
     # ============================
     print(f"\n[7] Banner grabbing en paralelo...\n")
-
-    targets = resolved[:50]  # limitar
-
+    targets = resolved[:50]
     results = []
+
     with ThreadPoolExecutor(max_workers=30) as executor:
         for item in executor.map(process_ip, targets):
             results.append(item)
@@ -225,7 +223,7 @@ def main():
             print("\n[13] SSL: SKIPPED")
 
         # ============================
-        # 14 - WAF / CDN DETECTION 
+        # 14 - WAF / CDN BASIC
         # ============================
         if deep_scan:
             print("\n[14] WAF / CDN Detection:\n")
@@ -245,7 +243,7 @@ def main():
             print("\n[14] WAF/CDN: SKIPPED (FAST)")
 
         # ============================
-        # 15 - Payload-Based WAF Detection 
+        # 15 - Payload-Based WAF Detection
         # ============================
         if deep_scan:
             print("\n[15] Payload-Based WAF Detection:\n")
@@ -264,9 +262,26 @@ def main():
                     print(f"    * {p['payload'][:25]} → error")
                 else:
                     print(f"    * {p['payload'][:25]} → status {p['status_code']}, blocked={p['blocked_like']}")
-
         else:
             print("\n[15] Payload-Based WAF: SKIPPED (FAST)")
+
+        # =========================================
+        # 16 - REAL ORIGIN DETECTION (CDN BYPASS)
+        # =========================================
+        if deep_scan:
+            print("\n[16] Real Origin Detection (CDN bypass):\n")
+
+            real = detect_real_ip(sub, ip)
+
+            print(f"- ¿IP actual es Cloudflare?: {real['behind_cloudflare']}")
+            print(f"- DNS Globales devolvieron: {real['origin_leaked_global_dns']}")
+
+            if real["origin_found"]:
+                print(">>> 🎯 POSIBLE IP REAL DETECTADA DETRÁS DE CLOUDFLARE <<<")
+                if real["direct_connect_matches"]:
+                    print(f"IP detectada: {real['direct_connect_matches']}")
+            else:
+                print("No se filtró la IP de origen (protección del CDN efectiva).")
 
 
 if __name__ == "__main__":
