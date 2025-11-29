@@ -89,24 +89,23 @@ def detect_real_ip(domain, known_ip):
         "origin_found": False
     }
 
-    # 1) Resolver desde DNS globales
+    
     dns_ips = resolve_global(domain)
     result["origin_leaked_global_dns"] = dns_ips
 
-    # si encontramos una IP que NO es Cloudflare, es oro
+    
     for ip in dns_ips:
         if not ip_in_cf_range(ip):
             result["origin_found"] = True
             return result
 
-    # 2) Si no hay IP filtrada, probar direct connect
-    # Intentamos conectar “por fuera” usando Host header
+    
     for ip in dns_ips:
         test = direct_connect_test(ip, domain)
         if test is None:
             continue
 
-        # si la respuesta no es challenge de Cloudflare → origin
+        
         if "cloudflare" not in (test["server"] or "").lower():
             result["origin_found"] = True
             result["direct_connect_matches"].append(ip)
