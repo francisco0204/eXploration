@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 export default function Hero({ onScan, disabled }) {
   const [value, setValue] = useState('');
-  const [mode, setMode] = useState('2'); // '2' = DEEP, '1' = FAST
+  const [mode, setMode] = useState('1'); // '1' = FAST (default), '2' = DEEP
   const [authorized, setAuthorized] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
 
@@ -173,7 +173,7 @@ export default function Hero({ onScan, disabled }) {
         >
           {mode === '1'
             ? 'Enumera subdominios y chequea qué puertos tienen abiertos. Lo más rápido.'
-            : 'Además analiza tecnologías, headers de seguridad, CORS, rutas sensibles, paneles admin y WAF/CDN de cada subdominio. ~1 minuto.'}
+            : 'Además analiza tecnologías, headers de seguridad, CORS, rutas sensibles, paneles admin y WAF/CDN de cada subdominio. Puede tardar varios minutos.'}
         </p>
 
         <button
@@ -223,8 +223,8 @@ export default function Hero({ onScan, disabled }) {
             <InfoBlock title="Modo DEEP" last>
               Todo lo anterior, más el análisis de seguridad completo por subdominio:
               headers, CORS, rutas sensibles, paneles admin, y pruebas activas de WAF con
-              payloads de SQLi/XSS/LFI/command injection. Tarda más (~1 minuto) porque hace
-              muchas más requests.
+              payloads de SQLi/XSS/LFI/command injection. Tarda más (puede llevar varios
+              minutos) porque hace muchas más requests.
             </InfoBlock>
           </div>
         )}

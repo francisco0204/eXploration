@@ -88,7 +88,7 @@ export default function ScanningOverlay({ active, closing, target }) {
           {SCAN_STAGES[stageIndex]}
         </p>
         <p style={{ margin: '18px 0 0', fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.5 }}>
-          Un escaneo DEEP puede tardar alrededor de un minuto.
+          Un escaneo DEEP puede tardar varios minutos. RÁPIDO es casi instantáneo.
         </p>
       </div>
     </div>
