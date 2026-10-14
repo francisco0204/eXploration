@@ -12,9 +12,11 @@ const port = process.env.PORT || 3000;
 const MAX_CONCURRENT_SCANS = 2;
 let activeScans = 0;
 
-// Cuánto esperamos a que termine un escaneo antes de matarlo. Un escaneo
-// DEEP normal tarda ~1 min; dejamos margen generoso por si el target es lento.
-const SCAN_TIMEOUT_MS = 4 * 60 * 1000;
+// Cuánto esperamos a que termine un escaneo antes de matarlo. En local un
+// DEEP tarda ~1 min, pero en un plan free con CPU compartida (0.1 CPU) puede
+// tardar bastante más — Render en sí no tiene timeout corto, así que este
+// límite es nuestro, configurable por si hace falta más margen.
+const SCAN_TIMEOUT_MS = parseInt(process.env.SCAN_TIMEOUT_MS || '480000', 10); // 8 min default
 
 // En Windows/local normalmente es "python". En los contenedores Linux de
 // Render/Railway casi siempre es "python3". Configurable por las dudas.
@@ -22,7 +24,10 @@ const PYTHON_BIN = process.env.PYTHON_BIN || 'python';
 
 // En desarrollo (sin CORS_ORIGIN seteado) dejamos cualquier origen.
 // En producción, seteá CORS_ORIGIN=https://tu-front.vercel.app
-const corsOrigin = process.env.CORS_ORIGIN || '*';
+// Normalizamos (trim + sin barra final) porque un espacio o "/" de más en la
+// variable de entorno rompe el match silenciosamente y es muy difícil de ver.
+const corsOrigin = (process.env.CORS_ORIGIN || '*').trim().replace(/\/+$/, '');
+console.log(`[+] CORS_ORIGIN configurado como: "${corsOrigin}"`);
 app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: '10kb' })); // el body solo tiene target/mode/authorized, no hace falta más
 

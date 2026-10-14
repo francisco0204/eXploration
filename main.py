@@ -4,6 +4,7 @@ sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 import argparse
 import json
+import os
 from modules.crtsh import get_subdomains_from_crtsh
 from modules.bruteforce import bruteforce_subdomains
 from modules.resolver import resolve_subdomains
@@ -26,7 +27,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # Cada tarea abre bastantes conexiones (port scan + ~5 módulos con sus propios
 # sub-workers), así que no conviene ponerlo tan alto como los 30 que tenía
 # el banner grabbing solo. Subilo/bajalo según cómo responda tu CPU/red.
-PIPELINE_WORKERS = 12
+PIPELINE_WORKERS = int(os.environ.get("PIPELINE_WORKERS", "12"))
 
 
 def _json_safe(obj):
