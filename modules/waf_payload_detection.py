@@ -4,8 +4,10 @@ import urllib.parse
 from typing import Dict, List, Any, Optional
 
 # Timeout por defecto para las requests
-DEFAULT_TIMEOUT = 7
+DEFAULT_TIMEOUT = 5
 DEFAULT_WORKERS = 10
+# Cuántos payloads se prueban en paralelo por URL
+PAYLOAD_WORKERS = 6
 
 # Payloads básicos
 PAYLOADS = [
@@ -39,7 +41,7 @@ BLOCK_STRINGS = [
     "mod_security",
 ]
 
-# Signatures simples 
+# Signatures simples
 WAF_SIGNATURES = {
     "Cloudflare": [
         "cloudflare",
@@ -79,7 +81,7 @@ def _safe_request(
     timeout: int = DEFAULT_TIMEOUT,
 ) -> Optional[requests.Response]:
     """
-    Envuelve una request de requests para que nunca rompa el flujo del programa.
+    Envuelve una request para que nunca rompa el flujo del programa.
     Devuelve None si hay error (timeout, SSL, conexión, etc).
     """
     try:
@@ -96,7 +98,7 @@ def _safe_request(
             headers=headers,
             timeout=timeout,
             allow_redirects=True,
-            verify=False,  
+            verify=False,
         )
         return resp
     except requests.RequestException:
@@ -139,11 +141,9 @@ def _looks_like_block_page(info: Dict[str, Any]) -> bool:
     status = info["status_code"]
     body_sample = info["body_sample"]
 
-    
     if status in (403, 406, 429):
         return True
 
-    
     for word in BLOCK_STRINGS:
         if word in body_sample:
             return True
@@ -151,12 +151,34 @@ def _looks_like_block_page(info: Dict[str, Any]) -> bool:
     return False
 
 
+def _test_payload(url: str, payload: str, timeout: int) -> Dict[str, Any]:
+    """
+    Prueba un único payload contra la URL. Pensada para correr dentro
+    de un ThreadPoolExecutor.
+    """
+    params = {"q": payload}
+    resp = _safe_request("GET", url, params=params, timeout=timeout)
+    if resp is None:
+        return {"payload": payload, "error": "sin_respuesta"}
+
+    info = _extract_basic_info(resp)
+    blocked = _looks_like_block_page(info)
+
+    return {
+        "payload": payload,
+        "status_code": info["status_code"],
+        "body_length": info["body_length"],
+        "blocked_like": blocked,
+    }
+
+
 def detect_waf_for_url(
     url: str,
     timeout: int = DEFAULT_TIMEOUT,
+    payload_workers: int = PAYLOAD_WORKERS,
 ) -> Dict[str, Any]:
     """
-    Hace detección de WAF para una sola URL usando payloads.
+    Hace detección de WAF para una sola URL usando payloads (en paralelo).
 
     Devuelve un dict con:
     - url
@@ -167,7 +189,6 @@ def detect_waf_for_url(
     - payload_results (lista de resultados por payload)
     """
 
-    
     if not url.startswith("http://") and not url.startswith("https://"):
         url = "https://" + url
 
@@ -189,31 +210,10 @@ def detect_waf_for_url(
     baseline_info = _extract_basic_info(baseline_resp)
     result["baseline"] = baseline_info
 
-    # 2) Probar payloads en un parámetro de query (ej: ?q=PAYLOAD)
-    payload_results = []
-
-    for payload in PAYLOADS:
-        params = {"q": payload}
-        resp = _safe_request("GET", url, params=params, timeout=timeout)
-        if resp is None:
-            payload_results.append(
-                {
-                    "payload": payload,
-                    "error": "sin_respuesta",
-                }
-            )
-            continue
-
-        info = _extract_basic_info(resp)
-        blocked = _looks_like_block_page(info)
-
-        payload_results.append(
-            {
-                "payload": payload,
-                "status_code": info["status_code"],
-                "body_length": info["body_length"],
-                "blocked_like": blocked,
-            }
+    # 2) Probar payloads EN PARALELO
+    with concurrent.futures.ThreadPoolExecutor(max_workers=payload_workers) as executor:
+        payload_results = list(
+            executor.map(lambda p: _test_payload(url, p, timeout), PAYLOADS)
         )
 
     result["payload_results"] = payload_results
@@ -235,9 +235,7 @@ def detect_waf_for_url(
         if pr["status_code"] != baseline_status:
             different_status_count += 1
 
-        
         if abs(pr["body_length"] - baseline_len) > (baseline_len * 0.5 + 2000):
-            
             pr["blocked_like"] = True
             blocked_count += 1
 
@@ -248,7 +246,6 @@ def detect_waf_for_url(
             f"y {different_status_count} códigos distintos al baseline."
         )
 
-        
         vendor = _guess_waf_vendor(
             baseline_info["headers"], baseline_info["body_sample"]
         )
@@ -283,7 +280,6 @@ def detect_waf_for_multiple_urls(
                 res = future.result()
                 results.append(res)
             except Exception:
-                
                 url = future_to_url[future]
                 results.append(
                     {

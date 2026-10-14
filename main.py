@@ -1,3 +1,9 @@
+import sys
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+import argparse
+import json
 from modules.crtsh import get_subdomains_from_crtsh
 from modules.bruteforce import bruteforce_subdomains
 from modules.resolver import resolve_subdomains
@@ -11,72 +17,189 @@ from modules.tech_and_security import analyze_tech_and_security
 from modules.advanced_recon import analyze_cors, scan_sensitive_paths, find_js_endpoints, get_cert_names
 from modules.waf_detector import detect_waf_and_cdn
 from modules.waf_payload_detection import detect_waf_for_url
-from modules.cdn_bypass import detect_real_ip   # <-- IMPORT NUEVO
+from modules.cdn_bypass import detect_real_ip
+from modules.cve_lookup import extract_software_banners, lookup_cves
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Subdominios en paralelo durante banner grabbing + análisis DEEP combinado.
+# Cada tarea abre bastantes conexiones (port scan + ~5 módulos con sus propios
+# sub-workers), así que no conviene ponerlo tan alto como los 30 que tenía
+# el banner grabbing solo. Subilo/bajalo según cómo responda tu CPU/red.
+PIPELINE_WORKERS = 12
+
+
+def _json_safe(obj):
+    """Convierte a algo serializable cualquier tipo que json.dump no entienda
+    (sets, etc.) sin importar en qué módulo se haya generado."""
+    if isinstance(obj, (set, frozenset)):
+        return list(obj)
+    return str(obj)
+
+
+def _safe_source(func, args, label):
+    """Corre una fuente de subdominios sin que una excepción tire abajo el
+    resto de las fuentes que están corriendo en paralelo."""
+    try:
+        return label, func(*args)
+    except Exception as e:
+        print(f" - [{label}] no disponible ({e})")
+        return label, set()
+
+
+def analyze_subdomain(item, deep_scan):
+    """Hace todo el análisis (pasos 8 a 16) para UN subdominio, a partir del
+    resultado de banner grabbing (item)."""
+    sub = item["subdomain"]
+    ip = item["ip"]
+
+    sub_data = {
+        "subdomain": sub,
+        "ip": ip,
+        "open_ports": [p for p, state in item["ports"].items() if state],
+        "http_banner": item["http"],
+        "https_banner": item["https"],
+    }
+
+    if not deep_scan:
+        return sub_data
+
+    analysis = {"raw_headers": {}, "url": f"https://{sub}"}
+
+    try:
+        sub_data["api_endpoints"] = detect_api_endpoints(sub)
+    except Exception as e:
+        sub_data["api_endpoints"] = {}
+        print(f"  [!] {sub}: error en api_detector -> {e}")
+
+    try:
+        analysis = analyze_tech_and_security(sub, use_https=True)
+        sub_data["technologies"] = analysis["technologies"]
+        sub_data["security_headers"] = analysis["security_headers"]
+        sub_data["admin_endpoints"] = analysis["admin_endpoints"]
+    except Exception as e:
+        sub_data["technologies"] = []
+        sub_data["security_headers"] = {}
+        sub_data["admin_endpoints"] = {}
+        print(f"  [!] {sub}: error en tech_and_security -> {e}")
+
+    try:
+        sub_data["cors"] = analyze_cors(analysis["raw_headers"])
+    except Exception as e:
+        sub_data["cors"] = {}
+        print(f"  [!] {sub}: error en analyze_cors -> {e}")
+
+    try:
+        software = extract_software_banners(analysis["raw_headers"])
+        sub_data["cves"] = lookup_cves(software) if software else []
+    except Exception as e:
+        sub_data["cves"] = []
+        print(f"  [!] {sub}: error en cve_lookup -> {e}")
+
+    base_url = analysis["url"]
+
+    try:
+        sub_data["sensitive_paths"] = scan_sensitive_paths(base_url)
+    except Exception as e:
+        sub_data["sensitive_paths"] = {}
+        print(f"  [!] {sub}: error en scan_sensitive_paths -> {e}")
+
+    try:
+        sub_data["js_endpoints"] = find_js_endpoints(base_url)
+    except Exception as e:
+        sub_data["js_endpoints"] = []
+        print(f"  [!] {sub}: error en find_js_endpoints -> {e}")
+
+    if 443 in sub_data["open_ports"]:
+        try:
+            sub_data["ssl_certs"] = get_cert_names(sub)
+        except Exception as e:
+            sub_data["ssl_certs"] = []
+            print(f"  [!] {sub}: error en get_cert_names -> {e}")
+    else:
+        sub_data["ssl_certs"] = []
+
+    try:
+        sub_data["waf_cdn"] = detect_waf_and_cdn(
+            subdomain=sub,
+            ip=ip,
+            headers=analysis["raw_headers"],
+            body=item["http"] or item["https"] or "",
+            status=200,
+        )
+    except Exception as e:
+        sub_data["waf_cdn"] = []
+        print(f"  [!] {sub}: error en detect_waf_and_cdn -> {e}")
+
+    try:
+        sub_data["waf_payload"] = detect_waf_for_url(f"https://{sub}")
+    except Exception as e:
+        sub_data["waf_payload"] = {}
+        print(f"  [!] {sub}: error en detect_waf_for_url -> {e}")
+
+    try:
+        sub_data["real_ip"] = detect_real_ip(sub, ip)
+    except Exception as e:
+        sub_data["real_ip"] = {}
+        print(f"  [!] {sub}: error en detect_real_ip -> {e}")
+
+    print(f"[+] Análisis completo: {sub}")
+    return sub_data
+
+
+def process_target(target, deep_scan):
+    """Pipeline completo de UN subdominio: banner grabbing + análisis DEEP,
+    pensado para correr como una sola tarea dentro del pool."""
+    banner = process_ip(target)
+    return analyze_subdomain(banner, deep_scan)
 
 
 def main():
-    domain = input("Ingrese un dominio (ej: example.com): ").strip()
+    parser = argparse.ArgumentParser(description="eXploration - Advanced Recon")
+    parser.add_argument("-d", "--domain", required=True, help="Dominio objetivo (ej: example.com)")
+    parser.add_argument("-m", "--mode", choices=["1", "2"], default="2", help="Modo: 1 (FAST) o 2 (DEEP)")
+    parser.add_argument("--json", help="Ruta para exportar el resultado en JSON", default=None)
+    args = parser.parse_args()
 
-    print("\nSeleccione modo de escaneo:")
-    print("[1] FAST (rápido, sin análisis profundo)")
-    print("[2] DEEP (completo, recon avanzado)")
-    mode = input("Opción: ").strip()
+    domain = args.domain.strip()
+    deep_scan = (args.mode == "2")
 
-    deep_scan = (mode == "2")
+    export_data = {
+        "target": domain,
+        "mode": "DEEP" if deep_scan else "FAST",
+        "total_subdomains": 0,
+        "results": [],
+    }
+
     print(f"\nModo seleccionado: {'DEEP' if deep_scan else 'FAST'}\n")
 
     # ============================
-    # 1 - BufferOver
+    # 1-5 - Todas las fuentes de subdominios EN PARALELO
     # ============================
-    print(f"[1] Obteniendo subdominios de BufferOver...")
-    try:
-        subs_bufferover = get_subdomains_from_bufferover(domain)
-        print(f" - {len(subs_bufferover)} encontrados")
-    except:
-        subs_bufferover = set()
-        print(" - No disponible")
+    print("[1-5] Recolectando subdominios (BufferOver, crt.sh, ThreatMiner, OTX, Bruteforce) en paralelo...\n")
 
-    # ============================
-    # 2 - crt.sh
-    # ============================
-    print(f"\n[2] Obteniendo subdominios de crt.sh...")
-    subs_crtsh = get_subdomains_from_crtsh(domain)
-    print(f" - {len(subs_crtsh)} encontrados")
+    sources = [
+        (get_subdomains_from_bufferover, (domain,), "BufferOver"),
+        (get_subdomains_from_crtsh, (domain,), "crt.sh"),
+        (get_subdomains_from_threatminer, (domain,), "ThreatMiner"),
+        (get_subdomains_from_otx, (domain,), "OTX"),
+        (bruteforce_subdomains, (domain, "wordlist.txt"), "Bruteforce"),
+    ]
 
-    # ============================
-    # 3 - ThreatMiner
-    # ============================
-    print(f"\n[3] Obteniendo subdominios de ThreatMiner...")
-    subs_tm = get_subdomains_from_threatminer(domain)
-    print(f" - {len(subs_tm)} encontrados")
-
-    # ============================
-    # 4 - OTX
-    # ============================
-    print(f"\n[4] Obteniendo subdominios de OTX...")
-    subs_otx = get_subdomains_from_otx(domain)
-    print(f" - {len(subs_otx)} encontrados")
-
-    # ============================
-    # 5 - Bruteforce
-    # ============================
-    print(f"\n[5] Bruteforce de subdominios...")
-    subs_bruteforce = bruteforce_subdomains(domain, "wordlist.txt")
-    print(f" - {len(subs_bruteforce)} encontrados")
+    gathered = {}
+    with ThreadPoolExecutor(max_workers=len(sources)) as executor:
+        futures = {executor.submit(_safe_source, fn, fn_args, label): label for fn, fn_args, label in sources}
+        for future in as_completed(futures):
+            label, result = future.result()
+            gathered[label] = result
+            print(f" - {label}: {len(result)} encontrados")
 
     # ============================
     # UNIÓN
     # ============================
-    all_subdomains = set().union(
-        subs_bufferover,
-        subs_crtsh,
-        subs_tm,
-        subs_otx,
-        subs_bruteforce
-    )
+    all_subdomains = set().union(*gathered.values()) if gathered else set()
 
+    export_data["total_subdomains"] = len(all_subdomains)
     print(f"\nTotal subdominios únicos: {len(all_subdomains)}\n")
 
     # ============================
@@ -90,198 +213,23 @@ def main():
         print(f" - {item['subdomain']} -> {item['ip']}")
 
     # ============================
-    # 7 - Banner grabbing (paralelo)
+    # 7-16 - PIPELINE POR SUBDOMINIO (banner grabbing + análisis DEEP juntos)
     # ============================
-    print(f"\n[7] Banner grabbing en paralelo...\n")
     targets = resolved[:50]
-    results = []
+    print(f"\n[7-16] Procesando {len(targets)} subdominios ({PIPELINE_WORKERS} en paralelo)...\n")
 
-    with ThreadPoolExecutor(max_workers=30) as executor:
-        for item in executor.map(process_ip, targets):
-            results.append(item)
+    with ThreadPoolExecutor(max_workers=PIPELINE_WORKERS) as executor:
+        futures = [executor.submit(process_target, t, deep_scan) for t in targets]
+        for future in futures:
+            export_data["results"].append(future.result())
 
     # ============================
-    # ANÁLISIS POR SUBDOMINIO
+    # EXPORTACIÓN A JSON FINAL
     # ============================
-    for r in results:
-        sub = r["subdomain"]
-        ip = r["ip"]
-
-        print("\n====================================")
-        print(f"=== {sub} ({ip}) ===")
-        print("====================================")
-
-        # PUERTOS ABIERTOS
-        open_ports = [p for p, state in r["ports"].items() if state]
-        print("\nPuertos abiertos:", open_ports if open_ports else "Ninguno")
-
-        # HTTP Banner
-        if r["http"]:
-            print("\n[HTTP 80]\n", r["http"])
-
-        # HTTPS Banner
-        if r["https"]:
-            print("\n[HTTPS 443]\n", r["https"])
-
-        # ============================
-        # 8 - API endpoints
-        # ============================
-        if deep_scan:
-            print("\n[8] Endpoints API comunes:\n")
-            api_results = detect_api_endpoints(sub)
-            for endpoint, code in api_results.items():
-                if code in [200, 301, 302, 401, 403]:
-                    print(f" - {endpoint} → {code}")
-        else:
-            print("\n[8] API endpoints: SKIPPED (FAST mode)")
-
-        # ============================
-        # 9 - Tecnologías y Seguridad
-        # ============================
-        if deep_scan:
-            print("\n[9] Tecnologías y Seguridad:\n")
-
-            analysis = analyze_tech_and_security(sub, use_https=True)
-
-            techs = analysis["technologies"]
-            print("Tecnologías:", ", ".join(techs) if techs else "(ninguna detectada)")
-
-            sec = analysis["security_headers"]
-            print("\nHeaders de seguridad:")
-            print(f" - HSTS:      {'OK' if sec['hsts'] else 'FALTA'}")
-            print(f" - CSP:       {'OK' if sec['csp'] else 'FALTA'}")
-            print(f" - X-Frame:   {'OK' if sec['x_frame_options'] else 'FALTA'}")
-            print(f" - X-Content: {'OK' if sec['x_content_type_options'] else 'FALTA'}")
-            print(f" - Referrer:  {'OK' if sec['referrer_policy'] else 'FALTA'}")
-
-            admin_eps = analysis["admin_endpoints"]
-            if admin_eps:
-                print("\nPaneles admin encontrados:")
-                for ep, code in admin_eps.items():
-                    print(f" - {ep} → {code}")
-            else:
-                print("Paneles admin no detectados.")
-        else:
-            print("\n[9] Tecnologías: SKIPPED (FAST mode)")
-
-        # ============================
-        # 10 - CORS
-        # ============================
-        if deep_scan:
-            print("\n[10] CORS:\n")
-            cors = analyze_cors(analysis["raw_headers"])
-            print(f" - Allow-Origin:      {cors['origin']}")
-            print(f" - Allow-Credentials: {cors['credentials']}")
-            print(f" - Config. riesgosa:  {'SÍ' if cors['risky'] else 'no'}")
-        else:
-            print("\n[10] CORS: SKIPPED")
-
-        # ============================
-        # 11 - Rutas sensibles
-        # ============================
-        if deep_scan:
-            print("\n[11] Rutas sensibles:\n")
-            base_url = analysis["url"]
-            sensitive = scan_sensitive_paths(base_url)
-            if sensitive:
-                for path, code in sensitive.items():
-                    print(f" - {path} → {code}")
-            else:
-                print("Ninguna ruta sensible detectada.")
-        else:
-            print("\n[11] Sensitive Paths: SKIPPED")
-
-        # ============================
-        # 12 - JS Endpoints
-        # ============================
-        if deep_scan:
-            print("\n[12] Endpoints en JS:\n")
-            js_eps = find_js_endpoints(base_url)
-            if js_eps:
-                for ep in sorted(js_eps):
-                    print(f" - {ep}")
-            else:
-                print("No se detectaron endpoints en JS.")
-        else:
-            print("\n[12] JS Endpoints: SKIPPED")
-
-        # ============================
-        # 13 - Certificado SSL
-        # ============================
-        if deep_scan:
-            print("\n[13] Certificado SSL:\n")
-            if 443 in open_ports:
-                cert_names = get_cert_names(sub)
-                if cert_names:
-                    for name in sorted(cert_names):
-                        print(f" - {name}")
-                else:
-                    print("No se pudieron obtener nombres del certificado.")
-            else:
-                print("Puerto 443 cerrado.")
-        else:
-            print("\n[13] SSL: SKIPPED")
-
-        # ============================
-        # 14 - WAF / CDN BASIC
-        # ============================
-        if deep_scan:
-            print("\n[14] WAF / CDN Detection:\n")
-            waf_results = detect_waf_and_cdn(
-                subdomain=sub,
-                ip=ip,
-                headers=analysis["raw_headers"],
-                body=r["http"] or r["https"] or "",
-                status=200
-            )
-            if waf_results:
-                for w in waf_results:
-                    print(f" - {w}")
-            else:
-                print("No se detectó WAF/CDN.")
-        else:
-            print("\n[14] WAF/CDN: SKIPPED (FAST)")
-
-        # ============================
-        # 15 - Payload-Based WAF Detection
-        # ============================
-        if deep_scan:
-            print("\n[15] Payload-Based WAF Detection:\n")
-
-            url = f"https://{sub}"
-            waf_payload_result = detect_waf_for_url(url)
-
-            print(f" - URL: {waf_payload_result['url']}")
-            print(f" - WAF Detectado: {waf_payload_result['waf_detected']}")
-            print(f" - Vendor: {waf_payload_result['vendor']}")
-            print(f" - Motivo: {waf_payload_result['reason']}")
-
-            print("\n   Payloads:")
-            for p in waf_payload_result["payload_results"][:3]:
-                if "error" in p:
-                    print(f"    * {p['payload'][:25]} → error")
-                else:
-                    print(f"    * {p['payload'][:25]} → status {p['status_code']}, blocked={p['blocked_like']}")
-        else:
-            print("\n[15] Payload-Based WAF: SKIPPED (FAST)")
-
-        # =========================================
-        # 16 - REAL ORIGIN DETECTION (CDN BYPASS)
-        # =========================================
-        if deep_scan:
-            print("\n[16] Real Origin Detection (CDN bypass):\n")
-
-            real = detect_real_ip(sub, ip)
-
-            print(f"- ¿IP actual es Cloudflare?: {real['behind_cloudflare']}")
-            print(f"- DNS Globales devolvieron: {real['origin_leaked_global_dns']}")
-
-            if real["origin_found"]:
-                print(">>> 🎯 POSIBLE IP REAL DETECTADA DETRÁS DE CLOUDFLARE <<<")
-                if real["direct_connect_matches"]:
-                    print(f"IP detectada: {real['direct_connect_matches']}")
-            else:
-                print("No se filtró la IP de origen (protección del CDN efectiva).")
+    if args.json:
+        with open(args.json, "w", encoding="utf-8") as f:
+            json.dump(export_data, f, indent=4, default=_json_safe)
+        print(f"\n[+] Resultados guardados exitosamente en {args.json}\n")
 
 
 if __name__ == "__main__":

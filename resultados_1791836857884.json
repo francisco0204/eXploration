@@ -1,0 +1,62 @@
+{
+    "target": "influendedores.com",
+    "mode": "DEEP",
+    "total_subdomains": 5,
+    "results": [
+        {
+            "subdomain": "mail.influendedores.com",
+            "ip": "195.192.255.154",
+            "open_ports": [
+                21,
+                25,
+                80,
+                443
+            ],
+            "http_banner": "HTTP/1.1 200 OK\r\nServer: nginx\r\nDate: Mon, 12 Oct 2026 20:28:21 GMT\r\nContent-Type: text/html\r\nContent-Length: 724\r\nConnection: keep-alive\r\nVary: User-Agent,Accept-Encoding\r\nLast-Modified: Thu, 20 Jun 2024 13:51:04 GMT\r\nETag: \"2d4-61b529b2c37f2\"\r\nAccept-Ranges: bytes\r\nX-Powered-By: Loading",
+            "https_banner": null,
+            "api_endpoints": {
+                "/api": 404,
+                "/api/": 404,
+                "/api/v1": 404,
+                "/api/v1/": 404,
+                "/api/v2": 404,
+                "/api/v2/": 404,
+                "/v1": 404,
+                "/v1/": 404,
+                "/v2": 404,
+                "/v2/": 404,
+                "/graphql": 404,
+                "/graphiql": 404,
+                "/swagger": 404,
+                "/swagger.json": 404,
+                "/swagger.yaml": 404,
+                "/openapi": 404,
+                "/openapi.json": 404,
+                "/openapi.yaml": 404,
+                "/docs": 404,
+                "/documentation": 404,
+                "/rest": 404,
+                "/rest/": 404,
+                "/api-docs": 404,
+                "/redoc": 404,
+                "/health": 404,
+                "/status": 404
+            },
+            "technologies": [
+                "Nginx"
+            ],
+            "security_headers": {
+                "hsts": false,
+                "csp": false,
+                "x_frame_options": false,
+                "x_content_type_options": false,
+                "referrer_policy": false
+            },
+            "admin_endpoints": {},
+            "cors": {
+                "origin": null,
+                "credentials": null,
+                "risky": false
+            },
+            "sensitive_paths": {},
+            "js_endpoints": 

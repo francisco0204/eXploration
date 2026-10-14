@@ -1,0 +1,10 @@
+node_modules
+**/node_modules
+recon-dashboard/frontend
+__pycache__
+**/__pycache__
+*.pyc
+.git
+.env
+*.json.bak
+resultados_*.json

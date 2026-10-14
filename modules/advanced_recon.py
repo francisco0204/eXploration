@@ -3,6 +3,7 @@ import urllib3
 import ssl
 import socket
 import re
+import concurrent.futures
 from urllib.parse import urljoin
 
 # Desactiva warnings de certificados SSL no verificados
@@ -57,7 +58,6 @@ def analyze_cors(headers: dict) -> dict:
 
     risky = False
     if origin == "*" and credentials and credentials.lower() == "true":
-        
         risky = True
 
     return {
@@ -67,21 +67,27 @@ def analyze_cors(headers: dict) -> dict:
     }
 
 
-def scan_sensitive_paths(base_url: str) -> dict:
+def scan_sensitive_paths(base_url: str, timeout: int = 3, max_workers: int = 10) -> dict:
     """
-    Escanea rutas 'sensibles' típicas.
+    Escanea rutas 'sensibles' típicas EN PARALELO.
     Devuelve path -> status_code para las que parecen existir.
     """
     found = {}
 
-    for path in SENSITIVE_PATHS:
+    def _check(path):
         url = urljoin(base_url, path)
         try:
-            r = requests.get(url, timeout=4, verify=False, allow_redirects=True)
+            r = requests.get(url, timeout=timeout, verify=False, allow_redirects=True)
             if r.status_code in [200, 301, 302, 401, 403]:
-                found[path] = r.status_code
+                return path, r.status_code
         except Exception:
-            continue
+            pass
+        return path, None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for path, code in executor.map(_check, SENSITIVE_PATHS):
+            if code is not None:
+                found[path] = code
 
     return found
 
@@ -92,7 +98,6 @@ def _extract_script_urls(html: str, base_url: str) -> list:
     Devuelve URLs absolutas.
     """
     urls = set()
-    # Busca src en tags <script>
     for match in re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html, flags=re.IGNORECASE):
         src = match.strip()
         if src.startswith("http://") or src.startswith("https://"):
@@ -102,10 +107,10 @@ def _extract_script_urls(html: str, base_url: str) -> list:
     return list(urls)
 
 
-def find_js_endpoints(base_url: str) -> set:
+def find_js_endpoints(base_url: str, timeout: int = 4, max_workers: int = 8) -> set:
     """
-    Descarga la página principal, busca scripts, descarga JS
-    y extrae posibles endpoints interesantes.
+    Descarga la página principal, busca scripts, descarga cada JS
+    EN PARALELO y extrae posibles endpoints interesantes.
     """
     endpoints = set()
 
@@ -116,22 +121,28 @@ def find_js_endpoints(base_url: str) -> set:
         return endpoints
 
     script_urls = _extract_script_urls(html, base_url)
+    if not script_urls:
+        return endpoints
 
-    for js_url in script_urls:
+    def _scan_script(js_url):
+        local_found = set()
         try:
-            r = requests.get(js_url, timeout=5, verify=False)
+            r = requests.get(js_url, timeout=timeout, verify=False)
             if r.status_code != 200:
-                continue
+                return local_found
             text = r.text
-            
             if len(text) > 200_000:
                 text = text[:200_000]
-
             for pattern in JS_ENDPOINT_PATTERNS:
                 for match in re.findall(pattern, text):
-                    endpoints.add(match)
+                    local_found.add(match)
         except Exception:
-            continue
+            pass
+        return local_found
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for local_found in executor.map(_scan_script, script_urls):
+            endpoints.update(local_found)
 
     return endpoints
 
@@ -151,12 +162,10 @@ def get_cert_names(hostname: str) -> set:
             with context.wrap_socket(sock, server_hostname=hostname) as ssock:
                 cert = ssock.getpeercert()
 
-        # SubjectAltName
         for typ, val in cert.get("subjectAltName", []):
             if typ == "DNS":
                 names.add(val.lower())
 
-        # CommonName
         for entry in cert.get("subject", []):
             for key, val in entry:
                 if key == "commonName":

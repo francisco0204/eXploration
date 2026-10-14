@@ -1,0 +1,233 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  --ink: #0b0f16;
+  --surface: #121823;
+  --surface-2: #161d29;
+  --line: #222c3a;
+  --text: #e9eef4;
+  --muted: #8995a8;
+  --signal: #ff8a42;
+  --signal-dim: #a85a28;
+  --ok: #3ecf8e;
+  --warn: #ffc857;
+  --danger: #ff5c5c;
+  --info: #6fb8ff;
+
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --sans: 'Inter', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html {
+  /* evita el zoom automático de iOS al tocar inputs con font-size < 16px */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ink);
+  background-image:
+    radial-gradient(circle at 15% 0%, rgba(255, 138, 66, 0.08), transparent 42%),
+    radial-gradient(circle at 85% 100%, rgba(111, 184, 255, 0.05), transparent 45%);
+  background-size: 160% 160%;
+  animation: drift 22s ease-in-out infinite alternate;
+  color: var(--text);
+  font-family: var(--sans);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden; /* el scroll vive dentro de cada panel, no en el body */
+}
+
+@keyframes drift {
+  from {
+    background-position: 0% 0%, 100% 100%;
+  }
+  to {
+    background-position: 10% 8%, 90% 92%;
+  }
+}
+
+/* Micro-interacción global: cualquier botón habilitado responde al hover/press */
+button:not(:disabled) {
+  transition: transform 0.15s ease, filter 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+button:not(:disabled):hover {
+  filter: brightness(1.1);
+}
+button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.list-item {
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.list-item:hover {
+  background: var(--surface) !important;
+}
+
+.hover-lift {
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+  border-color: var(--signal-dim) !important;
+}
+
+p {
+  line-height: 1.6;
+}
+
+::selection {
+  background: var(--signal-dim);
+  color: var(--text);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--signal-dim);
+}
+
+.mono {
+  font-family: var(--mono);
+  letter-spacing: 0.1px;
+}
+
+button {
+  font-family: inherit;
+  touch-action: manipulation;
+}
+
+code,
+pre {
+  font-family: var(--mono);
+}
+
+/* oculta la scrollbar en strips horizontales (stats, tabs) sin perder el scroll */
+.hscroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.hscroll::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes blink-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes popOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateY(-8px);
+  }
+}
+
+@keyframes backdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes backdropOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

@@ -1,0 +1,6 @@
+{
+    "target": "scanme.nmap.org",
+    "mode": "DEEP",
+    "total_subdomains": 0,
+    "results": []
+}

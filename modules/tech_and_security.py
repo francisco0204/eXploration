@@ -1,7 +1,8 @@
 import requests
 import urllib3
+import concurrent.futures
 
-# Desactivar warnings de certificados 
+# Desactivar warnings de certificados
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Endpoints típicos de paneles admin / login
@@ -97,22 +98,27 @@ def analyze_security_headers(headers: dict) -> dict:
     return result
 
 
-def check_admin_endpoints(base_url: str) -> dict:
+def check_admin_endpoints(base_url: str, timeout: int = 3, max_workers: int = 8) -> dict:
     """
-    Chequea algunos endpoints típicos de admin/login.
-    Devuelve endpoint -> status_code (o None si no respondió).
+    Chequea endpoints típicos de admin/login EN PARALELO.
+    Devuelve endpoint -> status_code (solo los que respondieron relevante).
     """
     found = {}
 
-    for endpoint in COMMON_ADMIN_ENDPOINTS:
+    def _check(endpoint):
         url = base_url + endpoint
         try:
-            r = requests.get(url, timeout=4, verify=False, allow_redirects=True)
-            
+            r = requests.get(url, timeout=timeout, verify=False, allow_redirects=True)
             if r.status_code in [200, 301, 302, 401, 403]:
-                found[endpoint] = r.status_code
+                return endpoint, r.status_code
         except Exception:
-            continue
+            pass
+        return endpoint, None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for endpoint, code in executor.map(_check, COMMON_ADMIN_ENDPOINTS):
+            if code is not None:
+                found[endpoint] = code
 
     return found
 
@@ -123,14 +129,14 @@ def analyze_tech_and_security(subdomain: str, use_https: bool = True) -> dict:
       - petición al sitio (HTML + headers)
       - fingerprint de tecnologías
       - análisis de headers de seguridad
-      - búsqueda de paneles admin
+      - búsqueda de paneles admin (en paralelo)
     """
     protocol = "https" if use_https else "http"
     base_url = f"{protocol}://{subdomain}"
 
     try:
         resp = requests.get(base_url, timeout=5, verify=False, allow_redirects=True)
-        html = resp.text[:50000] 
+        html = resp.text[:50000]
         headers = {k: v for k, v in resp.headers.items()}
     except Exception:
         html = ""
