@@ -19,6 +19,8 @@ export default function Hero({ onScan, disabled }) {
     <div
       style={{
         height: '100%',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',

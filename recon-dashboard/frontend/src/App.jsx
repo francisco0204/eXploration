@@ -71,7 +71,14 @@ export default function App() {
   const showEmptySuccess = status === 'success' && data?.results?.length === 0;
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div
+      style={{
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+      }}
+    >
       {(status === 'idle' || status === 'scanning' || status === 'error') && (
         <div style={{ flex: 1, minHeight: 0 }}>
           <Hero onScan={handleScan} disabled={status === 'scanning'} />
