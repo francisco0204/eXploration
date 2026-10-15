@@ -72,8 +72,8 @@ export default function App() {
 
   return (
     <div
+      className="app-shell"
       style={{
-        height: '100vh',
         display: 'flex',
         flexDirection: 'column',
         paddingTop: 'env(safe-area-inset-top, 0px)',

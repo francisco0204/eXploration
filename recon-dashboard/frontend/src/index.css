@@ -136,6 +136,15 @@ pre {
   display: none;
 }
 
+/* 100vh en mobile no descuenta la barra de direcciones del navegador cuando
+   está expandida, así que el contenido de arriba queda tapado. 100dvh sí la
+   descuenta y se recalcula solo cuando la barra aparece/desaparece. Dejamos
+   vh como fallback por si el navegador no soporta dvh todavía. */
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+}
+
 @keyframes blink-dot {
   0%,
   100% {
